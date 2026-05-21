@@ -89,44 +89,42 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       return res.status(500).json({ error: 'GEMINI_API_KEY не задан на сервере' });
     }
 
-    // Gemini 2.0 Flash — бесплатный, быстрый, поддерживает изображения
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const body = {
       contents: [{
         parts: [
-          {
-            inline_data: {
-              mime_type: mimeType,
-              data: base64Image
-            }
-          },
-          {
-            text: PROMPT
-          }
+          { inline_data: { mime_type: mimeType, data: base64Image } },
+          { text: PROMPT }
         ]
       }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 8192
+        maxOutputTokens: 16384,
+        thinkingConfig: { thinkingBudget: 0 }
       }
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
+    let response;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (response.ok) break;
       const errData = await response.json().catch(() => ({}));
-      const msg = errData?.error?.message || `Ошибка Gemini API: ${response.status}`;
-
+      const msg = errData?.error?.message || '';
       if (response.status === 400) return res.status(500).json({ error: 'Неверный формат запроса к Gemini.' });
       if (response.status === 403) { console.error('Gemini 403:', msg); return res.status(500).json({ error: 'Неверный API-ключ Gemini.' }); }
       if (response.status === 429) { console.error('Gemini 429:', JSON.stringify(errData)); return res.status(429).json({ error: 'Превышен лимит запросов. Подождите немного.' }); }
-
-      throw new Error(msg);
+      const isOverloaded = response.status === 503 || msg.includes('high demand') || msg.includes('overloaded');
+      if (isOverloaded && attempt < 3) {
+        console.error(`Gemini overloaded, retry ${attempt}/3 in ${attempt * 5}s`);
+        await new Promise(r => setTimeout(r, attempt * 5000));
+        continue;
+      }
+      throw new Error(msg || `Ошибка Gemini API: ${response.status}`);
     }
 
     const rawBody = await response.text();
@@ -187,7 +185,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
 
 // ── HEALTHCHECK ───────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', model: 'gemini-2.0-flash' });
+  res.json({ status: 'ok', version: '1.0.0', model: 'gemini-2.5-flash' });
 });
 
 // ── DEBUG: список доступных моделей ───────────────────────
@@ -205,7 +203,7 @@ app.get('/models', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✓ Сервер запущен: http://localhost:${PORT}`);
-  console.log(`  Модель: gemini-2.0-flash (бесплатно)`);
+  console.log(`  Модель: gemini-2.5-flash (бесплатно)`);
   console.log(`  POST /analyze — анализ планировки`);
   console.log(`  GET  /health  — проверка состояния`);
 });
