@@ -108,7 +108,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 4000
+        maxOutputTokens: 8192
       }
     };
 
@@ -131,8 +131,11 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
 
     const data = await response.json();
 
-    // Извлекаем текст из ответа Gemini
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Извлекаем текст из ответа Gemini (фильтруем thinking-части)
+    const rawText = (data?.candidates?.[0]?.content?.parts || [])
+      .filter(p => p.text && !p.thought)
+      .map(p => p.text)
+      .join('');
 
     if (!rawText) {
       throw new Error('Gemini вернул пустой ответ');
