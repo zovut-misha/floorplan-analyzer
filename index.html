@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Планировщик квартиры — ИИ-анализ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cream: #F5F0E8;
+    --ink: #1A1714;
+    --accent: #C4602A;
+    --accent-light: #E8D5C4;
+    --muted: #7A7169;
+    --border: #D4CFC8;
+    --surface: #FDFAF6;
+    --green: #3B7A57;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--cream);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--ink);
+    padding: 0 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 52px;
+    border-bottom: 1px solid #333;
+  }
+  .nav-logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.1rem; font-weight: 300;
+    color: var(--cream); letter-spacing: 0.04em;
+  }
+  .nav-logo span { color: var(--accent); }
+  .nav-hint { font-size: 9px; color: #666; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* ── HERO ── */
+  .hero {
+    max-width: 900px; margin: 0 auto;
+    padding: 5rem 2rem 3rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+    align-items: center;
+  }
+  .hero-text h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(2.5rem, 5vw, 3.8rem);
+    font-weight: 300; line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .hero-text h1 em { color: var(--accent); font-style: italic; }
+  .hero-text p {
+    margin-top: 1.2rem;
+    font-size: 11px; color: var(--muted);
+    line-height: 1.8; letter-spacing: 0.04em;
+  }
+  .hero-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .stat {
+    background: var(--surface);
+    padding: 1.2rem;
+  }
+  .stat-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.2rem; font-weight: 300;
+    color: var(--accent);
+  }
+  .stat-label {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-top: 0.2rem;
+  }
+
+  /* ── MAIN CARD ── */
+  .main-section {
+    max-width: 700px; margin: 0 auto;
+    padding: 0 2rem 4rem;
+  }
+
+  .upload-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .card-header {
+    background: var(--ink);
+    padding: 1rem 1.5rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .card-header-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .card-header span {
+    font-size: 9px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: #aaa;
+  }
+
+  .card-body { padding: 2rem; }
+
+  /* ── DROP ZONE ── */
+  .drop-zone {
+    border: 1.5px dashed var(--border);
+    padding: 3.5rem 2rem;
+    text-align: center; cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--cream);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: #FDF8F2;
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer;
+    width: 100%; height: 100%;
+  }
+  .drop-icon {
+    font-size: 2.5rem; margin-bottom: 1rem;
+    display: block; color: var(--accent);
+    transition: transform 0.2s ease;
+  }
+  .drop-zone:hover .drop-icon { transform: translateY(-4px); }
+  .drop-label {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.4rem; font-weight: 400;
+    display: block; margin-bottom: 0.4rem;
+  }
+  .drop-sublabel {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  /* ── PREVIEW ── */
+  .preview-wrap { display: none; margin-top: 1.5rem; border: 1px solid var(--border); }
+  .preview-wrap.visible { display: block; }
+  .preview-bar {
+    padding: 0.6rem 1rem;
+    background: var(--cream);
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .preview-bar span { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .preview-bar button {
+    background: none; border: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent);
+    cursor: pointer;
+  }
+  .preview-bar button:hover { text-decoration: underline; }
+  .preview-img {
+    width: 100%; max-height: 360px;
+    object-fit: contain; display: block;
+    background: #F0EBE3;
+  }
+
+  /* ── GENERATE BTN ── */
+  .generate-btn {
+    display: none; width: 100%;
+    margin-top: 1.5rem; padding: 1.1rem;
+    background: var(--ink); color: var(--cream);
+    border: none; cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: background 0.15s ease;
+    position: relative; overflow: hidden;
+  }
+  .generate-btn.visible { display: block; }
+  .generate-btn::after {
+    content: ''; position: absolute; inset: 0;
+    background: var(--accent);
+    transform: scaleX(0); transform-origin: left;
+    transition: transform 0.3s ease;
+    z-index: 0;
+  }
+  .generate-btn:hover::after { transform: scaleX(1); }
+  .generate-btn span { position: relative; z-index: 1; }
+  .generate-btn:disabled { background: var(--muted); cursor: not-allowed; }
+  .generate-btn:disabled::after { display: none; }
+
+  /* ── STATUS ── */
+  .status-block { display: none; margin-top: 1.5rem; }
+  .status-block.visible { display: block; }
+  .status-header {
+    padding: 0.6rem 1rem;
+    background: var(--ink);
+    font-size: 9px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #aaa;
+  }
+  .steps { list-style: none; border: 1px solid var(--border); border-top: none; }
+  .steps li {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0.75rem;
+    font-size: 11px; color: var(--muted);
+    transition: color 0.2s ease;
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li.done { color: var(--ink); }
+  .steps li.active { color: var(--accent); }
+  .step-icon { min-width: 18px; text-align: center; }
+
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--accent-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── ERROR ── */
+  .error-block {
+    display: none; margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: #FDF0EC; border: 1px solid #E8C4B4;
+    font-size: 11px; color: #8B3A1A; line-height: 1.6;
+  }
+  .error-block.visible { display: block; }
+
+  /* ── RESULT ── */
+  .result-block { display: none; margin-top: 2rem; }
+  .result-block.visible { display: block; }
+
+  .result-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem; font-weight: 300;
+    margin-bottom: 1.2rem;
+  }
+
+  .variants-list { display: grid; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .variant-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 0 1rem; align-items: start;
+    transition: border-color 0.15s ease;
+  }
+  .variant-card:hover { border-color: var(--accent); }
+  .variant-num-badge {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem; font-weight: 300;
+    color: var(--accent); line-height: 1;
+    grid-row: span 2;
+    padding-top: 2px;
+  }
+  .variant-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.05rem; font-weight: 500;
+  }
+  .variant-meta {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .variant-concept {
+    grid-column: 2;
+    font-size: 10px; color: var(--muted);
+    margin-top: 0.5rem; line-height: 1.7;
+  }
+
+  .download-btn {
+    display: block; width: 100%;
+    padding: 1.1rem;
+    background: var(--accent); color: white;
+    border: none; cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: opacity 0.15s ease;
+  }
+  .download-btn:hover { opacity: 0.85; }
+
+  .reset-btn {
+    display: block; width: 100%;
+    margin-top: 0.75rem; padding: 0.8rem;
+    background: none; color: var(--muted);
+    border: 1px solid var(--border); cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── HOW IT WORKS ── */
+  .how-section {
+    max-width: 900px; margin: 0 auto;
+    padding: 3rem 2rem 5rem;
+    border-top: 1px solid var(--border);
+  }
+  .how-section h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem; font-weight: 300;
+    margin-bottom: 2rem;
+  }
+  .how-grid {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .how-card {
+    background: var(--surface);
+    padding: 1.5rem 1.25rem;
+  }
+  .how-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.5rem; font-weight: 300;
+    color: var(--accent); margin-bottom: 0.75rem;
+  }
+  .how-title {
+    font-size: 11px; font-weight: 400;
+    letter-spacing: 0.06em; margin-bottom: 0.5rem;
+    text-transform: uppercase;
+  }
+  .how-desc { font-size: 10px; color: var(--muted); line-height: 1.8; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 640px) {
+    .hero { grid-template-columns: 1fr; gap: 2rem; padding: 3rem 1.5rem 2rem; }
+    .main-section { padding: 0 1.5rem 3rem; }
+    .how-grid { grid-template-columns: 1fr; }
+    .card-body { padding: 1.25rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Планировщик <span>квартиры</span></div>
+  <div class="nav-hint">ИИ-анализ планировок</div>
+</nav>
+
+<section class="hero">
+  <div class="hero-text">
+    <h1>Новая жизнь<br>вашей <em>квартиры</em></h1>
+    <p>Загрузите фотографию или чертёж планировки.<br>
+    ИИ проанализирует пространство и создаст PDF<br>
+    с 5–7 вариантами перепланировки на русском языке.</p>
+  </div>
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-num">5–7</div>
+      <div class="stat-label">вариантов</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">PDF</div>
+      <div class="stat-label">документ</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">RU</div>
+      <div class="stat-label">язык</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">~1мин</div>
+      <div class="stat-label">время</div>
+    </div>
+  </div>
+</section>
+
+<section class="main-section">
+  <div class="upload-card">
+    <div class="card-header">
+      <div class="card-header-dot"></div>
+      <span>Загрузка планировки</span>
+    </div>
+    <div class="card-body">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept="image/*">
+        <span class="drop-icon">⬆</span>
+        <span class="drop-label">Перетащите фото или нажмите</span>
+        <div class="drop-sublabel">JPG · PNG · WEBP · HEIC — любой формат</div>
+      </div>
+
+      <div class="preview-wrap" id="previewWrap">
+        <div class="preview-bar">
+          <span>Ваша планировка</span>
+          <button onclick="resetFile()">Заменить файл</button>
+        </div>
+        <img class="preview-img" id="previewImg" src="" alt="Планировка">
+      </div>
+
+      <button class="generate-btn" id="generateBtn" onclick="startAnalysis()">
+        <span>✦ Анализировать и создать PDF</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="status-block" id="statusBlock">
+    <div class="status-header">Обработка</div>
+    <ul class="steps">
+      <li id="step1"><span class="step-icon" id="icon1">○</span>Анализ планировки</li>
+      <li id="step2"><span class="step-icon" id="icon2">○</span>Генерация 5–7 вариантов</li>
+      <li id="step3"><span class="step-icon" id="icon3">○</span>Формирование PDF-документа</li>
+    </ul>
+  </div>
+
+  <div class="error-block" id="errorBlock"></div>
+
+  <div class="result-block" id="resultBlock">
+    <div class="result-title">Готово — <span id="variantCount">0</span> вариантов</div>
+    <div class="variants-list" id="variantsList"></div>
+    <button class="download-btn" id="downloadBtn">↓ Скачать PDF-документ</button>
+    <button class="reset-btn" onclick="resetAll()">Загрузить новую планировку</button>
+  </div>
+</section>
+
+<section class="how-section">
+  <h2>Как это работает</h2>
+  <div class="how-grid">
+    <div class="how-card">
+      <div class="how-num">01</div>
+      <div class="how-title">Загрузка</div>
+      <div class="how-desc">Добавьте любое изображение планировки — фото, скан, чертёж или скриншот. Формат не важен.</div>
+    </div>
+    <div class="how-card">
+      <div class="how-num">02</div>
+      <div class="how-title">Анализ</div>
+      <div class="how-desc">Claude AI изучает пространство: определяет комнаты, площади, несущие элементы и возможности перепланировки.</div>
+    </div>
+    <div class="how-card">
+      <div class="how-num">03</div>
+      <div class="how-title">PDF-отчёт</div>
+      <div class="how-desc">Получаете документ с 5–7 концепциями: зонирование, цвета, мебель, изменения и сравнительная таблица.</div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // ─── CONFIG ───────────────────────────────────────────
+  // Адрес вашего бэкенда. При локальной разработке — localhost:3000
+  // После деплоя замените на реальный URL, например: https://your-app.railway.app
+  const BACKEND_URL = 'http://localhost:3000';
+  // ──────────────────────────────────────────────────────
+
+  let uploadedFile = null;
+  let pdfDoc = null;
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const previewWrap = document.getElementById('previewWrap');
+  const previewImg = document.getElementById('previewImg');
+  const generateBtn = document.getElementById('generateBtn');
+  const statusBlock = document.getElementById('statusBlock');
+  const errorBlock = document.getElementById('errorBlock');
+  const resultBlock = document.getElementById('resultBlock');
+  const variantsList = document.getElementById('variantsList');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    uploadedFile = file;
+    previewImg.src = URL.createObjectURL(file);
+    previewWrap.classList.add('visible');
+    generateBtn.classList.add('visible');
+    hideError();
+  }
+
+  function resetFile() {
+    uploadedFile = null; fileInput.value = '';
+    previewWrap.classList.remove('visible');
+    generateBtn.classList.remove('visible');
+  }
+
+  function resetAll() {
+    resetFile();
+    resultBlock.classList.remove('visible');
+    statusBlock.classList.remove('visible');
+    pdfDoc = null; variantsList.innerHTML = '';
+    setStep('step1','idle'); setStep('step2','idle'); setStep('step3','idle');
+  }
+
+  function hideError() { errorBlock.classList.remove('visible'); }
+  function showError(msg) { errorBlock.textContent = '⚠ ' + msg; errorBlock.classList.add('visible'); }
+
+  function setStep(id, state) {
+    const li = document.getElementById(id);
+    const icon = document.getElementById('icon' + id.replace('step',''));
+    li.classList.remove('done','active');
+    if (state === 'active') {
+      li.classList.add('active');
+      icon.innerHTML = '<span class="spinner"></span>';
+    } else if (state === 'done') {
+      li.classList.add('done');
+      icon.textContent = '✓';
+    } else {
+      icon.textContent = '○';
+    }
+  }
+
+  async function startAnalysis() {
+    if (!uploadedFile) return;
+    generateBtn.disabled = true;
+    statusBlock.classList.add('visible');
+    resultBlock.classList.remove('visible');
+    hideError();
+
+    try {
+      setStep('step1', 'active');
+
+      const formData = new FormData();
+      formData.append('image', uploadedFile);
+
+      const res = await fetch(`${BACKEND_URL}/analyze`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Ошибка сервера: ${res.status}`);
+      }
+
+      setStep('step1', 'done');
+      setStep('step2', 'active');
+
+      const data = await res.json();
+      setStep('step2', 'done');
+      setStep('step3', 'active');
+
+      pdfDoc = await buildPDF(data);
+      setStep('step3', 'done');
+
+      renderCards(data.variants);
+      document.getElementById('variantCount').textContent = data.variants.length;
+      resultBlock.classList.add('visible');
+      statusBlock.classList.remove('visible');
+      resultBlock.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      downloadBtn.onclick = () => pdfDoc.save(`planировка_${Date.now()}.pdf`);
+
+    } catch (e) {
+      showError(e.message);
+      statusBlock.classList.remove('visible');
+      setStep('step1','idle'); setStep('step2','idle'); setStep('step3','idle');
+    } finally {
+      generateBtn.disabled = false;
+    }
+  }
+
+  function renderCards(variants) {
+    variantsList.innerHTML = '';
+    variants.forEach((v, i) => {
+      const card = document.createElement('div');
+      card.className = 'variant-card';
+      card.innerHTML = `
+        <div class="variant-num-badge">${String(i+1).padStart(2,'0')}</div>
+        <div class="variant-name">${v.title}</div>
+        <div class="variant-meta">${v.style || ''} · ${v.budget || ''} · ${v.difficulty || ''}</div>
+        <div class="variant-concept">${v.concept}</div>
+      `;
+      variantsList.appendChild(card);
+    });
+  }
+
+  // ─── PDF BUILDER ─────────────────────────────────────
+  async function buildPDF(data) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, H = 297, ml = 20, mr = 20, mt = 20;
+    const tw = W - ml - mr;
+
+    function bg() {
+      doc.setFillColor(245, 240, 232); doc.rect(0, 0, W, H, 'F');
+      doc.setDrawColor(196, 96, 42); doc.setLineWidth(0.3);
+      doc.rect(8, 8, W-16, H-16, 'S');
+    }
+    function hline(y) {
+      doc.setDrawColor(212, 207, 200); doc.setLineWidth(0.2);
+      doc.line(ml, y, W-mr, y);
+    }
+    function label(t, x, y) {
+      doc.setFont('helvetica','normal'); doc.setFontSize(7);
+      doc.setTextColor(122,113,105); doc.text(t.toUpperCase(), x, y);
+    }
+    function body(t, x, y, mw) {
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.setTextColor(26,23,20);
+      const ls = doc.splitTextToSize(t, mw||tw);
+      doc.text(ls, x, y); return ls.length * 4.5;
+    }
+
+    // ── PAGE 1: COVER ──
+    bg();
+    doc.setFillColor(26,23,20); doc.rect(ml, mt, tw, 50, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(30); doc.setTextColor(245,240,232);
+    doc.text('АНАЛИЗ', ml+8, mt+20);
+    doc.text('ПЛАНИРОВКИ', ml+8, mt+34);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(196,96,42);
+    doc.text('ВАРИАНТЫ ПЕРЕПЛАНИРОВКИ КВАРТИРЫ', ml+8, mt+44);
+
+    let y = mt + 65;
+    label('Анализ исходной планировки', ml, y); y += 6;
+    y += body(data.analysis || '', ml, y) + 10;
+
+    if (data.rooms && data.rooms.length) {
+      doc.setFillColor(253,250,246); doc.setDrawColor(212,207,200); doc.setLineWidth(0.3);
+      doc.rect(ml, y, tw, 24, 'FD');
+      doc.setFontSize(8); doc.setTextColor(122,113,105); doc.text('ПЛОЩАДЬ', ml+4, y+9);
+      doc.setFontSize(12); doc.setTextColor(26,23,20);
+      doc.text(data.totalArea || 'не определена', ml+4, y+18);
+      doc.setFontSize(8); doc.setTextColor(122,113,105); doc.text('ПОМЕЩЕНИЯ', ml+55, y+9);
+      doc.setFontSize(9); doc.setTextColor(26,23,20);
+      doc.text(data.rooms.slice(0,6).join(' · '), ml+55, y+18, { maxWidth: tw-59 });
+      y += 30;
+    }
+
+    hline(y); y += 8;
+    label(`Предложено вариантов: ${(data.variants||[]).length}`, ml, y); y += 8;
+    (data.variants||[]).forEach((v,i) => {
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(196,96,42);
+      doc.text(`${i+1}. ${v.title}`, ml, y);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(122,113,105);
+      doc.text(`${v.style||''} · ${v.budget||''} · сложность: ${v.difficulty||''}`, ml+4, y+5);
+      y += 12;
+    });
+
+    // ── PAGES: VARIANTS ──
+    for (let i = 0; i < (data.variants||[]).length; i++) {
+      const v = data.variants[i];
+      doc.addPage(); bg();
+      let py = mt;
+
+      doc.setFillColor(196,96,42); doc.rect(ml, py, 3, 32, 'F');
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(122,113,105);
+      doc.text(`ВАРИАНТ ${i+1} / ${data.variants.length}`, ml+8, py+9);
+      doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(26,23,20);
+      doc.text(v.title||'', ml+8, py+20);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,74,69);
+      doc.text(`${v.style||''}  ·  Бюджет: ${v.budget||'—'}  ·  Сложность: ${v.difficulty||'—'}`, ml+8, py+28);
+      py += 42; hline(py); py += 8;
+
+      doc.setFont('helvetica','italic'); doc.setFontSize(10.5); doc.setTextColor(26,23,20);
+      const cLines = doc.splitTextToSize(v.concept||'', tw);
+      doc.text(cLines, ml, py); py += cLines.length * 5.5 + 10;
+
+      if (v.colors && v.colors.length) {
+        label('Цветовая палитра', ml, py); py += 5;
+        let cx = ml;
+        (v.colors||[]).forEach((hex,ci) => {
+          try {
+            const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+            doc.setFillColor(r,g,b); doc.setDrawColor(212,207,200); doc.setLineWidth(0.2);
+            doc.rect(cx, py, 20, 12, 'FD');
+            doc.setFontSize(6.5); doc.setTextColor(122,113,105);
+            doc.text(((v.colorNames||[])[ci]||hex).substring(0,12), cx, py+16, { maxWidth: 22 });
+          } catch(e) {}
+          cx += 27;
+        });
+        py += 24;
+      }
+
+      if (v.changes && v.changes.length) {
+        label('Ключевые изменения', ml, py); py += 6;
+        v.changes.forEach(ch => {
+          doc.setFillColor(196,96,42); doc.circle(ml+2, py-1.5, 1.2, 'F');
+          doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(26,23,20);
+          const ls = doc.splitTextToSize(ch, tw-8); doc.text(ls, ml+7, py);
+          py += ls.length * 4.5 + 2;
+        });
+        py += 4;
+      }
+
+      if (v.zones && v.zones.length) {
+        label('Зонирование', ml, py); py += 6;
+        const cw = (tw-4)/2;
+        v.zones.forEach((z,zi) => {
+          const col = zi%2, row = Math.floor(zi/2);
+          const zx = ml + col*(cw+4), zy = py + row*22;
+          doc.setFillColor(253,250,246); doc.setDrawColor(212,207,200); doc.setLineWidth(0.2);
+          doc.rect(zx, zy, cw, 18, 'FD');
+          doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(26,23,20);
+          doc.text(`${z.name} ${z.area?'· '+z.area:''}`, zx+3, zy+7, { maxWidth: cw-6 });
+          doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,74,69);
+          doc.text(doc.splitTextToSize(z.features||'', cw-6).slice(0,1), zx+3, zy+13);
+        });
+        py += Math.ceil(v.zones.length/2)*22 + 8;
+      }
+
+      if (v.furniture && v.furniture.length) {
+        label('Мебель', ml, py); py += 5;
+        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,74,69);
+        const fl = doc.splitTextToSize(v.furniture.join('  ·  '), tw);
+        doc.text(fl, ml, py); py += fl.length*4+8;
+      }
+
+      if (v.pros && v.pros.length) {
+        label('Преимущества', ml, py); py += 6;
+        v.pros.forEach(pr => {
+          doc.setFillColor(59,122,87); doc.circle(ml+2, py-1.5, 1.2, 'F');
+          doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(26,23,20);
+          const ls = doc.splitTextToSize(pr, tw-8); doc.text(ls, ml+7, py);
+          py += ls.length*4.5+1;
+        });
+      }
+
+      if (py < H-25) {
+        hline(H-20);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(122,113,105);
+        doc.text(`Вариант ${i+1} · ${v.title}`, ml, H-13);
+        doc.text(`${i+2} / ${data.variants.length+1}`, W-mr, H-13, { align:'right' });
+      }
+    }
+
+    // ── LAST PAGE: COMPARISON ──
+    doc.addPage(); bg();
+    let sy = mt+10;
+    doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(196,96,42);
+    doc.text('СРАВНЕНИЕ', ml, sy); sy += 11;
+    doc.text('ВАРИАНТОВ', ml, sy); sy += 16;
+    hline(sy); sy += 10;
+
+    const cols = ['Вариант','Стиль','Бюджет','Сложность'];
+    const cws = [58,42,35,35];
+    doc.setFillColor(26,23,20); doc.rect(ml, sy-5, tw, 10, 'F');
+    let cx2 = ml;
+    cols.forEach((h,hi) => {
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(245,240,232);
+      doc.text(h, cx2+2, sy+2); cx2 += cws[hi];
+    });
+    sy += 8;
+
+    (data.variants||[]).forEach((v,i) => {
+      const bg2 = i%2===0 ? [253,250,246] : [245,240,232];
+      doc.setFillColor(...bg2); doc.rect(ml, sy-4, tw, 8, 'F');
+      let cx3 = ml;
+      [v.title, v.style, v.budget, v.difficulty].forEach((cell,ci) => {
+        doc.setFont('helvetica', ci===0?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(26,23,20);
+        doc.text(doc.splitTextToSize(cell||'—', cws[ci]-4)[0], cx3+2, sy+1);
+        cx3 += cws[ci];
+      });
+      sy += 8;
+    });
+
+    sy += 12; hline(sy); sy += 10;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(26,23,20);
+    doc.text('Рекомендации', ml, sy); sy += 7;
+    body('Перед началом работ проконсультируйтесь с архитектором. Учитывайте несущие стены, согласование в БТИ и стоимость работ по каждому варианту. Все предложения носят рекомендательный характер.', ml, sy);
+
+    return doc;
+  }
+</script>
+</body>
+</html>
