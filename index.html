@@ -567,16 +567,146 @@
     }
   }
 
+  // ─── FLOOR PLAN SVG ─────────────────────────────────────
+  function makeFloorPlan(variant) {
+    const W = 340, H = 220;
+    const zones = (variant.zones || []);
+    if (!zones.length) return '';
+
+    function parseArea(s) {
+      const m = String(s||'').match(/(\d+(?:\.\d+)?)/);
+      return m ? parseFloat(m[1]) : 12;
+    }
+
+    const areas = zones.map(z => parseArea(z.area));
+    const total = areas.reduce((a,b)=>a+b,0) || 1;
+
+    // Simple tiling: fill rows left-to-right
+    const PAD = 10, IW = W - PAD*2, IH = H - PAD*2;
+    const rects = [];
+    let remaining = [...zones.map((z,i)=>({...z, area: areas[i]}))];
+    let ry = PAD, rowH = IH;
+
+    while (remaining.length) {
+      const rowArea = remaining.reduce((a,z)=>a+z.area,0);
+      const take = remaining.length <= 3 ? remaining.length : Math.ceil(remaining.length/2);
+      const row = remaining.splice(0, take);
+      const rowTotalArea = row.reduce((a,z)=>a+z.area,0);
+      rowH = IH * (rowTotalArea / total);
+      let rx = PAD;
+      row.forEach(z => {
+        const rw = IW * (z.area / rowTotalArea);
+        rects.push({x:rx, y:ry, w:rw, h:rowH, name:z.name, area:z.area});
+        rx += rw;
+      });
+      ry += rowH;
+    }
+
+    const palette = ['#E8DDD0','#D4C8B8','#C4B8A8','#B8AA98','#A89888','#9C8878','#907870','#846868'];
+    const roomColors = {
+      'гостин':'#E8DDD0','кухн':'#D4C4A8','спальн':'#C8D4D8','санузел':'#D8E4D8',
+      'ванн':'#D8E4D8','прихож':'#E0D8CC','кабинет':'#D8D0C8','детск':'#D8E8D0',
+      'гардероб':'#E4DCD4','лоджи':'#DCE8DC','балкон':'#DCE8DC'
+    };
+
+    function roomColor(name, i) {
+      const n = (name||'').toLowerCase();
+      for (const [k,c] of Object.entries(roomColors)) if (n.includes(k)) return c;
+      return palette[i % palette.length];
+    }
+
+    const items = rects.map((r,i) => {
+      const c = roomColor(r.name, i);
+      const short = (r.name||'').replace(/\(.*\)/,'').trim().split(' ').slice(0,2).join(' ');
+      const fontSize = r.w < 60 ? 6 : r.h < 35 ? 7 : 8;
+      return `<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" fill="${c}" stroke="#7A716A" stroke-width="1"/>
+        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2-4).toFixed(1)}" text-anchor="middle" font-family="Cormorant Garamond,serif" font-size="${fontSize}" fill="#1A1714">${short}</text>
+        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2+6).toFixed(1)}" text-anchor="middle" font-family="DM Mono,monospace" font-size="6" fill="#7A716A">${r.area||''}</text>`;
+    }).join('');
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" fill="#FDF9F5"/>
+      <rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#C4602A" stroke-width="0.5"/>
+      ${items}
+    </svg>`;
+  }
+
+  // ─── INTERIOR RENDER SVG ─────────────────────────────────────
+  function makeInteriorRender(variant) {
+    const W = 340, H = 220;
+    const cols = (variant.colors && variant.colors.length >= 3)
+      ? variant.colors : ['#E8DDD0','#C4B8A8','#8B7355'];
+    const [wall1, wall2, floor] = cols;
+    const accent = cols[2] || '#C4602A';
+
+    // Perspective room: floor, back wall, left wall
+    const vx = W/2, vy = H*0.38; // vanishing point
+
+    function pt(x,y) { return `${x.toFixed(1)},${y.toFixed(1)}`; }
+
+    // Walls & floor
+    const floorPoly = `${pt(0,H)} ${pt(W,H)} ${pt(W*0.72,vy+20)} ${pt(W*0.28,vy+20)}`;
+    const backWall  = `${pt(W*0.28,vy+20)} ${pt(W*0.72,vy+20)} ${pt(W*0.72,vy-50)} ${pt(W*0.28,vy-50)}`;
+    const leftWall  = `${pt(0,H)} ${pt(W*0.28,vy+20)} ${pt(W*0.28,vy-50)} ${pt(0,H*0.1)}`;
+    const rightWall = `${pt(W,H)} ${pt(W*0.72,vy+20)} ${pt(W*0.72,vy-50)} ${pt(W,H*0.1)}`;
+    const ceiling   = `${pt(0,H*0.1)} ${pt(W*0.28,vy-50)} ${pt(W*0.72,vy-50)} ${pt(W,H*0.1)}`;
+
+    // Furniture based on furniture list
+    const furn = (variant.furniture||[]).join(' ').toLowerCase();
+    let furniture = '';
+
+    // Sofa on floor left area
+    if (furn.includes('диван') || furn.includes('sofa')) {
+      furniture += `<rect x="18" y="${H*0.62}" width="90" height="28" rx="4" fill="${accent}" opacity="0.85"/>
+        <rect x="18" y="${H*0.58}" width="90" height="12" rx="3" fill="${accent}"/>
+        <rect x="20" y="${H*0.60}" width="20" height="28" rx="3" fill="${accent}"/>
+        <rect x="86" y="${H*0.60}" width="20" height="28" rx="3" fill="${accent}"/>`;
+    }
+    // Table in center
+    if (furn.includes('стол') || furn.includes('table')) {
+      furniture += `<ellipse cx="${W*0.5}" cy="${H*0.72}" rx="28" ry="10" fill="${cols[1]}" stroke="#7A716A" stroke-width="1"/>
+        <rect x="${W*0.5-3}" y="${H*0.72}" width="6" height="16" fill="${cols[1]}"/>`;
+    }
+    // Bed right side
+    if (furn.includes('кровать') || furn.includes('bed')) {
+      furniture += `<rect x="${W*0.72}" y="${H*0.55}" width="55" height="38" rx="4" fill="${cols[1]}" stroke="#7A716A" stroke-width="0.8"/>
+        <rect x="${W*0.72}" y="${H*0.52}" width="55" height="14" rx="3" fill="${wall1}"/>`;
+    }
+    // Window on back wall
+    const bwx = W*0.38, bwy = vy-42, bww = W*0.24, bwh = 38;
+    const window = `<rect x="${bwx}" y="${bwy}" width="${bww}" height="${bwh}" fill="#D0E4F0" stroke="#7A716A" stroke-width="1"/>
+      <line x1="${bwx+bww/2}" y1="${bwy}" x2="${bwx+bww/2}" y2="${bwy+bwh}" stroke="#7A716A" stroke-width="0.7"/>
+      <line x1="${bwx}" y1="${bwy+bwh/2}" x2="${bwx+bww}" y2="${bwy+bwh/2}" stroke="#7A716A" stroke-width="0.7"/>`;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" fill="#F5F0E8"/>
+      <polygon points="${ceiling}" fill="${wall2}" opacity="0.6"/>
+      <polygon points="${backWall}" fill="${wall1}"/>
+      <polygon points="${leftWall}" fill="${wall2}"/>
+      <polygon points="${rightWall}" fill="${wall2}" opacity="0.8"/>
+      <polygon points="${floorPoly}" fill="${floor}" opacity="0.75"/>
+      ${window}
+      ${furniture}
+      <rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#C4602A" stroke-width="0.5"/>
+    </svg>`;
+  }
+
   function renderCards(variants) {
     variantsList.innerHTML = '';
     variants.forEach((v, i) => {
       const card = document.createElement('div');
       card.className = 'variant-card';
+      const fp = makeFloorPlan(v);
+      const ir = makeInteriorRender(v);
       card.innerHTML = `
         <div class="variant-num-badge">${String(i+1).padStart(2,'0')}</div>
         <div class="variant-name">${v.title}</div>
         <div class="variant-meta">${v.style || ''} · ${v.budget || ''} · ${v.difficulty || ''}</div>
         <div class="variant-concept">${v.concept}</div>
+        ${fp || ir ? `<div class="variant-visuals" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:1rem;">
+          ${fp ? `<div><div style="font-size:8px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Схема планировки</div>${fp}</div>` : ''}
+          ${ir ? `<div><div style="font-size:8px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Визуализация</div>${ir}</div>` : ''}
+        </div>` : ''}
       `;
       variantsList.appendChild(card);
     });
@@ -634,6 +764,16 @@
           </div>
           <hr style="border:none;border-top:1px solid #D4CFC8;margin-bottom:16px;">
           <div style="font-style:italic;font-size:13px;line-height:1.7;margin-bottom:20px;">${e(v.concept||'')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+            <div>
+              <div style="font-size:8px;color:#7A716A;letter-spacing:2px;margin-bottom:6px;">СХЕМА ПЛАНИРОВКИ</div>
+              ${makeFloorPlan(v)}
+            </div>
+            <div>
+              <div style="font-size:8px;color:#7A716A;letter-spacing:2px;margin-bottom:6px;">ВИЗУАЛИЗАЦИЯ</div>
+              ${makeInteriorRender(v)}
+            </div>
+          </div>
           ${v.colors&&v.colors.length?`
             <div style="font-size:8px;color:#7A716A;letter-spacing:2px;margin-bottom:8px;">ЦВЕТОВАЯ ПАЛИТРА</div>
             <div style="display:flex;gap:12px;margin-bottom:20px;">
