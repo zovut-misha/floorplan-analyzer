@@ -90,7 +90,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
     }
 
     // Gemini 2.0 Flash — бесплатный, быстрый, поддерживает изображения
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const body = {
       contents: [{
@@ -165,7 +165,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
 
 // ── HEALTHCHECK ───────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', model: 'gemini-1.5-flash' });
+  res.json({ status: 'ok', version: '1.0.0', model: 'gemini-2.5-flash' });
 });
 
 // ── DEBUG: список доступных моделей ───────────────────────
@@ -183,7 +183,7 @@ app.get('/models', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✓ Сервер запущен: http://localhost:${PORT}`);
-  console.log(`  Модель: gemini-1.5-flash (бесплатно)`);
+  console.log(`  Модель: gemini-2.5-flash (бесплатно)`);
   console.log(`  POST /analyze — анализ планировки`);
   console.log(`  GET  /health  — проверка состояния`);
 });
