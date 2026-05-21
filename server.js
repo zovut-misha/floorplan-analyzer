@@ -90,7 +90,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
     }
 
     // Gemini 2.0 Flash — бесплатный, быстрый, поддерживает изображения
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const body = {
       contents: [{
