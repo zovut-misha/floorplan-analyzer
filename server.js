@@ -168,6 +168,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0', model: 'gemini-1.5-flash' });
 });
 
+// ── DEBUG: список доступных моделей ───────────────────────
+app.get('/models', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
+    const data = await r.json();
+    const names = (data.models || []).map(m => m.name);
+    res.json({ status: r.status, models: names });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✓ Сервер запущен: http://localhost:${PORT}`);
   console.log(`  Модель: gemini-1.5-flash (бесплатно)`);
