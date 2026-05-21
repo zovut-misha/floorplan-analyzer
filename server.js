@@ -123,8 +123,8 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       const msg = errData?.error?.message || `Ошибка Gemini API: ${response.status}`;
 
       if (response.status === 400) return res.status(500).json({ error: 'Неверный формат запроса к Gemini.' });
-      if (response.status === 403) return res.status(500).json({ error: 'Неверный API-ключ Gemini.' });
-      if (response.status === 429) return res.status(429).json({ error: 'Превышен лимит запросов. Подождите немного.' });
+      if (response.status === 403) { console.error('Gemini 403:', msg); return res.status(500).json({ error: 'Неверный API-ключ Gemini.' }); }
+      if (response.status === 429) { console.error('Gemini 429:', JSON.stringify(errData)); return res.status(429).json({ error: 'Превышен лимит запросов. Подождите немного.' }); }
 
       throw new Error(msg);
     }
