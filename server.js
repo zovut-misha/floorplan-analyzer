@@ -129,7 +129,19 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       throw new Error(msg);
     }
 
-    const data = await response.json();
+    const rawBody = await response.text();
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch (e) {
+      console.error('Gemini body parse fail, first 500 chars:', rawBody.slice(0, 500));
+      throw new Error('Ошибка обработки ответа AI. Попробуйте ещё раз.');
+    }
+
+    const finishReason = data?.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.error('Gemini finishReason:', finishReason);
+    }
 
     // Извлекаем текст из ответа Gemini (фильтруем thinking-части)
     const rawText = (data?.candidates?.[0]?.content?.parts || [])
@@ -138,6 +150,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       .join('');
 
     if (!rawText) {
+      console.error('Gemini empty text, candidate:', JSON.stringify(data?.candidates?.[0])?.slice(0, 300));
       throw new Error('Gemini вернул пустой ответ');
     }
 
@@ -147,7 +160,13 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
       .replace(/```/g, '')
       .trim();
 
-    const parsed = JSON.parse(clean);
+    let parsed;
+    try {
+      parsed = JSON.parse(clean);
+    } catch (e) {
+      console.error('JSON parse fail, first 500 chars:', clean.slice(0, 500));
+      throw new Error('Ошибка обработки ответа AI. Попробуйте ещё раз.');
+    }
 
     if (!parsed.variants || !Array.isArray(parsed.variants)) {
       throw new Error('Некорректный ответ от AI');
