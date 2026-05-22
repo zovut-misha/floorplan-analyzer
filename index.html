@@ -280,6 +280,32 @@
     font-size: 10px; color: var(--muted);
     margin-top: 0.5rem; line-height: 1.7;
   }
+  .variant-visuals {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 1rem;
+  }
+  .visual-label {
+    font-size: 8px; color: var(--muted);
+    letter-spacing: .1em; text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .floor-plan-svg,
+  .render-image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 17 / 11;
+    background: #FDF9F5;
+    border: 1px solid var(--border);
+    object-fit: cover;
+  }
+  .render-image {
+    opacity: 0;
+    transition: opacity .25s ease;
+  }
+  .render-image.loaded { opacity: 1; }
 
   .download-btn {
     display: block; width: 100%;
@@ -343,6 +369,7 @@
     .main-section { padding: 0 1.5rem 3rem; }
     .how-grid { grid-template-columns: 1fr; }
     .card-body { padding: 1.25rem; }
+    .variant-visuals { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -568,127 +595,200 @@
   }
 
   // ─── FLOOR PLAN SVG ─────────────────────────────────────
+  function escapeHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function parseMetricNumber(s, fallback = 0) {
+    const m = String(s || '').replace(',', '.').match(/(\d+(?:\.\d+)?)/);
+    return m ? parseFloat(m[1]) : fallback;
+  }
+
   function makeFloorPlan(variant) {
-    const W = 340, H = 220;
+    const W = 680, H = 440;
     const zones = (variant.zones || []);
     if (!zones.length) return '';
 
-    function parseArea(s) {
-      const m = String(s||'').match(/(\d+(?:\.\d+)?)/);
-      return m ? parseFloat(m[1]) : 12;
-    }
-
-    const areas = zones.map(z => parseArea(z.area));
+    const areas = zones.map(z => Math.max(4, parseMetricNumber(z.area, 12)));
     const total = areas.reduce((a,b)=>a+b,0) || 1;
+    const widthM = Math.max(4.2, Math.sqrt(total * 1.25));
+    const depthM = Math.max(3.2, total / widthM);
+    const plan = { x: 74, y: 54, w: 520, h: 300 };
+    const wall = 10;
 
-    // Simple tiling: fill rows left-to-right
-    const PAD = 10, IW = W - PAD*2, IH = H - PAD*2;
+    const rooms = zones.map((z, i) => ({
+      name: z.name || `Зона ${i + 1}`,
+      areaText: z.area || `${areas[i].toFixed(1)} м²`,
+      area: areas[i]
+    }));
+
     const rects = [];
-    let remaining = [...zones.map((z,i)=>({...z, area: areas[i]}))];
-    let ry = PAD, rowH = IH;
+    const left = rooms.filter((_, i) => i % 2 === 0);
+    const right = rooms.filter((_, i) => i % 2 === 1);
+    const columns = right.length ? [
+      { x: plan.x, w: plan.w * 0.58, rooms: left },
+      { x: plan.x + plan.w * 0.58, w: plan.w * 0.42, rooms: right }
+    ] : [{ x: plan.x, w: plan.w, rooms: left }];
 
-    while (remaining.length) {
-      const rowArea = remaining.reduce((a,z)=>a+z.area,0);
-      const take = remaining.length <= 3 ? remaining.length : Math.ceil(remaining.length/2);
-      const row = remaining.splice(0, take);
-      const rowTotalArea = row.reduce((a,z)=>a+z.area,0);
-      rowH = IH * (rowTotalArea / total);
-      let rx = PAD;
-      row.forEach(z => {
-        const rw = IW * (z.area / rowTotalArea);
-        rects.push({x:rx, y:ry, w:rw, h:rowH, name:z.name, area:z.area});
-        rx += rw;
+    columns.forEach(col => {
+      const colTotal = col.rooms.reduce((sum, r) => sum + r.area, 0) || 1;
+      let y = plan.y;
+      col.rooms.forEach((room, idx) => {
+        const isLast = idx === col.rooms.length - 1;
+        const h = isLast ? plan.y + plan.h - y : Math.max(54, plan.h * room.area / colTotal);
+        rects.push({ ...room, x: col.x, y, w: col.w, h });
+        y += h;
       });
-      ry += rowH;
-    }
+    });
 
-    const palette = ['#E8DDD0','#D4C8B8','#C4B8A8','#B8AA98','#A89888','#9C8878','#907870','#846868'];
-    const roomColors = {
-      'гостин':'#E8DDD0','кухн':'#D4C4A8','спальн':'#C8D4D8','санузел':'#D8E4D8',
-      'ванн':'#D8E4D8','прихож':'#E0D8CC','кабинет':'#D8D0C8','детск':'#D8E8D0',
-      'гардероб':'#E4DCD4','лоджи':'#DCE8DC','балкон':'#DCE8DC'
-    };
-
-    function roomColor(name, i) {
-      const n = (name||'').toLowerCase();
-      for (const [k,c] of Object.entries(roomColors)) if (n.includes(k)) return c;
+    const palette = ['#F6F0E8','#EFE6D8','#E7E0D7','#EAF0EC','#E6EDF1','#F1E7E2'];
+    function roomFill(name, i) {
+      const n = String(name || '').toLowerCase();
+      if (n.includes('сан') || n.includes('ванн')) return '#E4EEF1';
+      if (n.includes('кух')) return '#EFE4D1';
+      if (n.includes('спаль')) return '#E9E6F0';
+      if (n.includes('гост')) return '#F1E9DE';
+      if (n.includes('лодж') || n.includes('балк')) return '#E6F0E8';
       return palette[i % palette.length];
     }
 
-    const items = rects.map((r,i) => {
-      const c = roomColor(r.name, i);
-      const short = (r.name||'').replace(/\(.*\)/,'').trim().split(' ').slice(0,2).join(' ');
-      const fontSize = r.w < 60 ? 6 : r.h < 35 ? 7 : 8;
-      return `<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" fill="${c}" stroke="#7A716A" stroke-width="1"/>
-        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2-4).toFixed(1)}" text-anchor="middle" font-family="Cormorant Garamond,serif" font-size="${fontSize}" fill="#1A1714">${short}</text>
-        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2+6).toFixed(1)}" text-anchor="middle" font-family="DM Mono,monospace" font-size="6" fill="#7A716A">${r.area||''}</text>`;
+    function mText(n) {
+      return `${n.toFixed(1).replace('.', ',')} м`;
+    }
+    function line(x1, y1, x2, y2, cls = 'thin') {
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="${cls}"/>`;
+    }
+    function door(x, y, dir = 'right') {
+      const size = 38;
+      const sweep = dir === 'left' ? 0 : 1;
+      const x2 = dir === 'left' ? x - size : x + size;
+      return `<path d="M ${x.toFixed(1)} ${y.toFixed(1)} L ${x.toFixed(1)} ${(y + size).toFixed(1)}" class="door-leaf"/>
+        <path d="M ${x.toFixed(1)} ${y.toFixed(1)} A ${size} ${size} 0 0 ${sweep} ${x2.toFixed(1)} ${(y + size).toFixed(1)}" class="door-arc"/>`;
+    }
+    function windowMark(x, y, w, horizontal = true) {
+      if (horizontal) {
+        return `<rect x="${x.toFixed(1)}" y="${(y - 3).toFixed(1)}" width="${w.toFixed(1)}" height="6" class="window"/>
+          ${line(x + 8, y, x + w - 8, y, 'window-line')}`;
+      }
+      return `<rect x="${(x - 3).toFixed(1)}" y="${y.toFixed(1)}" width="6" height="${w.toFixed(1)}" class="window"/>
+        ${line(x, y + 8, x, y + w - 8, 'window-line')}`;
+    }
+
+    const roomSvg = rects.map((r,i) => {
+      const name = escapeHtml(String(r.name).replace(/\(.*\)/,'').trim().split(' ').slice(0,2).join(' '));
+      const roomWM = widthM * (r.w / plan.w);
+      const roomHM = depthM * (r.h / plan.h);
+      const font = r.w < 150 ? 13 : 15;
+      return `<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" fill="${roomFill(r.name, i)}"/>
+        <rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" class="room-wall"/>
+        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2-7).toFixed(1)}" text-anchor="middle" class="room-name" font-size="${font}">${name}</text>
+        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h/2+12).toFixed(1)}" text-anchor="middle" class="room-area">${escapeHtml(r.areaText)}</text>
+        <text x="${(r.x+r.w/2).toFixed(1)}" y="${(r.y+r.h-12).toFixed(1)}" text-anchor="middle" class="room-dim">${mText(roomWM)} × ${mText(roomHM)}</text>`;
     }).join('');
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    const innerWalls = [];
+    rects.forEach(r => {
+      if (r.x > plan.x + 1) innerWalls.push(line(r.x, r.y, r.x, r.y + r.h, 'wall'));
+      if (r.y > plan.y + 1) innerWalls.push(line(r.x, r.y, r.x + r.w, r.y, 'wall'));
+    });
+
+    const doorSvg = rects.slice(0, Math.min(rects.length, 7)).map((r, i) => {
+      const sideX = r.x > plan.x ? r.x : r.x + r.w;
+      const y = Math.min(r.y + r.h - 50, Math.max(r.y + 18, r.y + r.h * 0.46));
+      return door(sideX, y, r.x > plan.x ? 'right' : 'left');
+    }).join('');
+
+    const windows = [
+      windowMark(plan.x + plan.w * 0.14, plan.y, plan.w * 0.2),
+      windowMark(plan.x + plan.w * 0.55, plan.y, plan.w * 0.24),
+      windowMark(plan.x + plan.w, plan.y + plan.h * 0.22, plan.h * 0.24, false),
+      windowMark(plan.x + plan.w * 0.2, plan.y + plan.h, plan.w * 0.22)
+    ].join('');
+
+    const dimY = plan.y + plan.h + 42;
+    const dimX = plan.x - 36;
+    const dimLines = `
+      ${line(plan.x, dimY, plan.x + plan.w, dimY, 'dim')}
+      ${line(plan.x, plan.y + plan.h + 12, plan.x, dimY + 7, 'dim-guide')}
+      ${line(plan.x + plan.w, plan.y + plan.h + 12, plan.x + plan.w, dimY + 7, 'dim-guide')}
+      <text x="${plan.x + plan.w/2}" y="${dimY - 8}" text-anchor="middle" class="dim-text">${mText(widthM)}</text>
+      ${line(dimX, plan.y, dimX, plan.y + plan.h, 'dim')}
+      ${line(plan.x - 8, plan.y, dimX - 7, plan.y, 'dim-guide')}
+      ${line(plan.x - 8, plan.y + plan.h, dimX - 7, plan.y + plan.h, 'dim-guide')}
+      <text x="${dimX - 10}" y="${plan.y + plan.h/2}" text-anchor="middle" class="dim-text" transform="rotate(-90 ${dimX - 10} ${plan.y + plan.h/2})">${mText(depthM)}</text>`;
+
+    return `<svg class="floor-plan-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Архитектурный план варианта">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M0,4 L8,0 L8,8 Z" fill="#6F665E"/>
+        </marker>
+        <style>
+          .outer-wall{fill:none;stroke:#1A1714;stroke-width:${wall};stroke-linejoin:miter}
+          .wall{stroke:#1A1714;stroke-width:7;stroke-linecap:square}
+          .room-wall{fill:none;stroke:#7A7169;stroke-width:1}
+          .thin{stroke:#7A7169;stroke-width:1}
+          .door-leaf{fill:none;stroke:#1A1714;stroke-width:4;stroke-linecap:square}
+          .door-arc{fill:none;stroke:#C4602A;stroke-width:1.5;stroke-dasharray:4 3}
+          .window{fill:#D8EEF7;stroke:#1A1714;stroke-width:2}
+          .window-line{stroke:#45839B;stroke-width:2}
+          .dim{stroke:#6F665E;stroke-width:1.2;marker-start:url(#arrow);marker-end:url(#arrow)}
+          .dim-guide{stroke:#B8AEA4;stroke-width:1;stroke-dasharray:3 4}
+          .room-name{font-family:Cormorant Garamond,serif;fill:#1A1714;font-weight:500}
+          .room-area,.room-dim,.dim-text,.scale-text{font-family:DM Mono,monospace;fill:#6F665E;font-size:12px}
+          .room-dim{font-size:10px}
+          .title{font-family:DM Mono,monospace;fill:#1A1714;font-size:11px;letter-spacing:2px}
+        </style>
+      </defs>
       <rect width="${W}" height="${H}" fill="#FDF9F5"/>
-      <rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#C4602A" stroke-width="0.5"/>
-      ${items}
+      <text x="${plan.x}" y="28" class="title">АРХИТЕКТУРНАЯ СХЕМА · МАСШТАБ 1:100</text>
+      ${roomSvg}
+      ${innerWalls.join('')}
+      <rect x="${plan.x}" y="${plan.y}" width="${plan.w}" height="${plan.h}" class="outer-wall"/>
+      ${windows}
+      ${doorSvg}
+      ${dimLines}
+      <rect x="${W - 154}" y="${H - 37}" width="90" height="6" fill="#1A1714"/>
+      <text x="${W - 109}" y="${H - 45}" text-anchor="middle" class="scale-text">2 м</text>
     </svg>`;
   }
 
-  // ─── INTERIOR RENDER SVG ─────────────────────────────────────
+  // ─── POLLINATIONS INTERIOR RENDER ─────────────────────────────────────
+  function makeRenderPrompt(variant) {
+    const colors = (variant.colorNames || variant.colors || []).join(', ');
+    const furniture = (variant.furniture || []).slice(0, 5).join(', ');
+    const zones = (variant.zones || []).map(z => z.name).slice(0, 4).join(', ');
+    return variant.renderPrompt || [
+      'photorealistic interior design render of a renovated apartment',
+      variant.style || 'modern interior',
+      variant.concept || '',
+      zones ? `zones: ${zones}` : '',
+      furniture ? `furniture: ${furniture}` : '',
+      colors ? `color palette: ${colors}` : '',
+      'wide angle, natural daylight, architectural visualization, realistic materials, no people, no text'
+    ].filter(Boolean).join(', ');
+  }
+
   function makeInteriorRender(variant) {
-    const W = 340, H = 220;
-    const cols = (variant.colors && variant.colors.length >= 3)
-      ? variant.colors : ['#E8DDD0','#C4B8A8','#8B7355'];
-    const [wall1, wall2, floor] = cols;
-    const accent = cols[2] || '#C4602A';
+    const prompt = makeRenderPrompt(variant);
+    const seed = Math.abs(Array.from(prompt).reduce((sum, ch) => sum + ch.charCodeAt(0), 0)) % 100000;
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=flux&width=900&height=580&seed=${seed}&nologo=true&enhance=true`;
+    return `<img class="render-image" src="${url}" alt="Фотореалистичный интерьер: ${escapeHtml(variant.title || '')}" crossorigin="anonymous" loading="lazy" onload="this.classList.add('loaded')" onerror="this.alt='Рендер временно недоступен'">`;
+  }
 
-    // Perspective room: floor, back wall, left wall
-    const vx = W/2, vy = H*0.38; // vanishing point
-
-    function pt(x,y) { return `${x.toFixed(1)},${y.toFixed(1)}`; }
-
-    // Walls & floor
-    const floorPoly = `${pt(0,H)} ${pt(W,H)} ${pt(W*0.72,vy+20)} ${pt(W*0.28,vy+20)}`;
-    const backWall  = `${pt(W*0.28,vy+20)} ${pt(W*0.72,vy+20)} ${pt(W*0.72,vy-50)} ${pt(W*0.28,vy-50)}`;
-    const leftWall  = `${pt(0,H)} ${pt(W*0.28,vy+20)} ${pt(W*0.28,vy-50)} ${pt(0,H*0.1)}`;
-    const rightWall = `${pt(W,H)} ${pt(W*0.72,vy+20)} ${pt(W*0.72,vy-50)} ${pt(W,H*0.1)}`;
-    const ceiling   = `${pt(0,H*0.1)} ${pt(W*0.28,vy-50)} ${pt(W*0.72,vy-50)} ${pt(W,H*0.1)}`;
-
-    // Furniture based on furniture list
-    const furn = (variant.furniture||[]).join(' ').toLowerCase();
-    let furniture = '';
-
-    // Sofa on floor left area
-    if (furn.includes('диван') || furn.includes('sofa')) {
-      furniture += `<rect x="18" y="${H*0.62}" width="90" height="28" rx="4" fill="${accent}" opacity="0.85"/>
-        <rect x="18" y="${H*0.58}" width="90" height="12" rx="3" fill="${accent}"/>
-        <rect x="20" y="${H*0.60}" width="20" height="28" rx="3" fill="${accent}"/>
-        <rect x="86" y="${H*0.60}" width="20" height="28" rx="3" fill="${accent}"/>`;
-    }
-    // Table in center
-    if (furn.includes('стол') || furn.includes('table')) {
-      furniture += `<ellipse cx="${W*0.5}" cy="${H*0.72}" rx="28" ry="10" fill="${cols[1]}" stroke="#7A716A" stroke-width="1"/>
-        <rect x="${W*0.5-3}" y="${H*0.72}" width="6" height="16" fill="${cols[1]}"/>`;
-    }
-    // Bed right side
-    if (furn.includes('кровать') || furn.includes('bed')) {
-      furniture += `<rect x="${W*0.72}" y="${H*0.55}" width="55" height="38" rx="4" fill="${cols[1]}" stroke="#7A716A" stroke-width="0.8"/>
-        <rect x="${W*0.72}" y="${H*0.52}" width="55" height="14" rx="3" fill="${wall1}"/>`;
-    }
-    // Window on back wall
-    const bwx = W*0.38, bwy = vy-42, bww = W*0.24, bwh = 38;
-    const window = `<rect x="${bwx}" y="${bwy}" width="${bww}" height="${bwh}" fill="#D0E4F0" stroke="#7A716A" stroke-width="1"/>
-      <line x1="${bwx+bww/2}" y1="${bwy}" x2="${bwx+bww/2}" y2="${bwy+bwh}" stroke="#7A716A" stroke-width="0.7"/>
-      <line x1="${bwx}" y1="${bwy+bwh/2}" x2="${bwx+bww}" y2="${bwy+bwh/2}" stroke="#7A716A" stroke-width="0.7"/>`;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-      <rect width="${W}" height="${H}" fill="#F5F0E8"/>
-      <polygon points="${ceiling}" fill="${wall2}" opacity="0.6"/>
-      <polygon points="${backWall}" fill="${wall1}"/>
-      <polygon points="${leftWall}" fill="${wall2}"/>
-      <polygon points="${rightWall}" fill="${wall2}" opacity="0.8"/>
-      <polygon points="${floorPoly}" fill="${floor}" opacity="0.75"/>
-      ${window}
-      ${furniture}
-      <rect x="6" y="6" width="${W-12}" height="${H-12}" fill="none" stroke="#C4602A" stroke-width="0.5"/>
-    </svg>`;
+  async function waitForImages(root) {
+    const images = Array.from(root.querySelectorAll('img'));
+    await Promise.all(images.map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(resolve => {
+        img.onload = () => { img.classList.add('loaded'); resolve(); };
+        img.onerror = resolve;
+        setTimeout(resolve, 12000);
+      });
+    }));
   }
 
   function renderCards(variants) {
@@ -700,12 +800,12 @@
       const ir = makeInteriorRender(v);
       card.innerHTML = `
         <div class="variant-num-badge">${String(i+1).padStart(2,'0')}</div>
-        <div class="variant-name">${v.title}</div>
-        <div class="variant-meta">${v.style || ''} · ${v.budget || ''} · ${v.difficulty || ''}</div>
-        <div class="variant-concept">${v.concept}</div>
-        ${fp || ir ? `<div class="variant-visuals" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:1rem;">
-          ${fp ? `<div><div style="font-size:8px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Схема планировки</div>${fp}</div>` : ''}
-          ${ir ? `<div><div style="font-size:8px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;">Визуализация</div>${ir}</div>` : ''}
+        <div class="variant-name">${escapeHtml(v.title)}</div>
+        <div class="variant-meta">${escapeHtml(v.style || '')} · ${escapeHtml(v.budget || '')} · ${escapeHtml(v.difficulty || '')}</div>
+        <div class="variant-concept">${escapeHtml(v.concept)}</div>
+        ${fp || ir ? `<div class="variant-visuals">
+          ${fp ? `<div><div class="visual-label">Архитектурный план</div>${fp}</div>` : ''}
+          ${ir ? `<div><div class="visual-label">Рендер интерьера · Flux</div>${ir}</div>` : ''}
         </div>` : ''}
       `;
       variantsList.appendChild(card);
@@ -832,6 +932,7 @@
     wrap.innerHTML = pages;
     document.body.appendChild(wrap);
     await document.fonts.ready;
+    await waitForImages(wrap);
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
