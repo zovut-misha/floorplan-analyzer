@@ -477,9 +477,10 @@
 
 <script>
   // ─── CONFIG ───────────────────────────────────────────
-  // Адрес вашего бэкенда. При локальной разработке — localhost:3000
-  // После деплоя замените на реальный URL, например: https://your-app.railway.app
-  const BACKEND_URL = 'https://floorplan-analyzer-production-6d13.up.railway.app';
+  // В продакшене API работает на том же Vercel-домене: /api/analyze.
+  // При локальной разработке фронт может лежать на 8080, а Express API на 3000.
+  const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const BACKEND_URL = IS_LOCAL ? 'http://localhost:3000' : '';
   // ──────────────────────────────────────────────────────
 
   let uploadedFile = null;
@@ -557,10 +558,15 @@
       const formData = new FormData();
       formData.append('image', uploadedFile);
 
-      const res = await fetch(`${BACKEND_URL}/analyze`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      const res = await fetch(`${BACKEND_URL}/api/analyze`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -586,7 +592,12 @@
       downloadBtn.onclick = () => pdfDoc.save(`planировка_${Date.now()}.pdf`);
 
     } catch (e) {
-      showError(e.message);
+      const message = e.name === 'AbortError'
+        ? 'Сервер не ответил за 2 минуты. Попробуйте изображение поменьше или повторите запрос.'
+        : e.message === 'Failed to fetch'
+          ? 'API сейчас недоступен. Проверьте, что на Vercel задан GEMINI_API_KEY и последний деплой завершился.'
+          : e.message;
+      showError(message);
       statusBlock.classList.remove('visible');
       setStep('step1','idle'); setStep('step2','idle'); setStep('step3','idle');
     } finally {
